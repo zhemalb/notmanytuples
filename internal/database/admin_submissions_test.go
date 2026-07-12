@@ -123,6 +123,9 @@ func TestListAdminSubmissionsPostgres(t *testing.T) {
 	if err := tx.Create(&benchmarks).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := migrateBenchmarkResults(tx); err != nil {
+		t.Fatal(err)
+	}
 	if err := tx.Create(&models.SubmissionBan{PipelineID: 1, AdminUserID: users[2].ID, Reason: "invalid environment", CreatedAt: now}).Error; err != nil {
 		t.Fatal(err)
 	}
