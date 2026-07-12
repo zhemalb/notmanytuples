@@ -54,6 +54,7 @@ type ServerConfig struct {
 	ListenAddress string
 	CourseName    string
 	HeaderName    string
+	Admins        []string
 	Cookies       struct {
 		AuthenticationKey string
 		EncryptionKey     string
