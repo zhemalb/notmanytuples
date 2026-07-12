@@ -75,7 +75,21 @@ type flagsMap map[string]*models.Flag
 type pipelinesProvider = func(project string) (pipelines []models.Pipeline, err error)
 type flagsProvider = func(gitlabLogin string) (flags []models.Flag, err error)
 
-func (s Scorer) loadUserPipelines(user *models.User, provider pipelinesProvider) (pipelinesMap, error) {
+type submissionBans map[int]models.SubmissionBan
+
+func (s Scorer) loadSubmissionBans() (submissionBans, error) {
+	rows, err := s.db.ListSubmissionBans()
+	if err != nil {
+		return nil, err
+	}
+	bans := make(submissionBans, len(rows))
+	for _, ban := range rows {
+		bans[ban.PipelineID] = ban
+	}
+	return bans, nil
+}
+
+func (s Scorer) loadUserPipelines(user *models.User, provider pipelinesProvider, bans submissionBans) (pipelinesMap, error) {
 	pipelines, err := provider(user.GetProjectName())
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to list use rpipelines")
@@ -84,6 +98,9 @@ func (s Scorer) loadUserPipelines(user *models.User, provider pipelinesProvider)
 	pipelinesMap := make(pipelinesMap)
 	for i := range pipelines {
 		pipeline := &pipelines[i]
+		if _, banned := bans[pipeline.ID]; banned {
+			continue
+		}
 		prev, found := pipelinesMap[pipeline.Task]
 		if !found || pipelineLess(pipeline, prev) {
 			prev = pipeline
@@ -160,6 +177,10 @@ func (s Scorer) CalcScoreboardWithFilter(groupName string, filter UserFilter) (*
 	if err != nil {
 		return nil, fmt.Errorf("failed to list all overrides: %w", err)
 	}
+	bans, err := s.loadSubmissionBans()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list submission bans: %w", err)
+	}
 
 	boards, err := s.CalcLeaderboards(currentDeadlines, groupUsers)
 	if err != nil {
@@ -168,7 +189,7 @@ func (s Scorer) CalcScoreboardWithFilter(groupName string, filter UserFilter) (*
 
 	scores := make([]*UserScores, len(users))
 	for i, user := range users {
-		userScores, err := s.calcUserScoresImpl(currentDeadlines, user, pipelines, flags, overrides, boards)
+		userScores, err := s.calcUserScoresImpl(currentDeadlines, user, pipelines, flags, overrides, boards, bans)
 		if err != nil {
 			return nil, err
 		}
@@ -248,8 +269,12 @@ func (s Scorer) CalcUserScores(user *models.User) (*UserScores, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to calc leaderboards: %w", err)
 	}
+	bans, err := s.loadSubmissionBans()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list submission bans: %w", err)
+	}
 
-	return s.calcUserScoresImpl(currentDeadlines, user, s.db.ListProjectPipelines, s.db.ListUserFlags, overrides, boards)
+	return s.calcUserScoresImpl(currentDeadlines, user, s.db.ListProjectPipelines, s.db.ListUserFlags, overrides, boards, bans)
 }
 
 type overrideKey struct {
@@ -268,8 +293,8 @@ func parseOverrides(overrides []models.OverriddenScore) (result map[overrideKey]
 	return
 }
 
-func (s Scorer) calcUserScoresImpl(currentDeadlines *deadlines.Deadlines, user *models.User, pipelinesP pipelinesProvider, flagsP flagsProvider, rawOverrides []models.OverriddenScore, boards leaderboardsMap) (*UserScores, error) {
-	pipelinesMap, err := s.loadUserPipelines(user, pipelinesP)
+func (s Scorer) calcUserScoresImpl(currentDeadlines *deadlines.Deadlines, user *models.User, pipelinesP pipelinesProvider, flagsP flagsProvider, rawOverrides []models.OverriddenScore, boards leaderboardsMap, bans submissionBans) (*UserScores, error) {
+	pipelinesMap, err := s.loadUserPipelines(user, pipelinesP, bans)
 	if err != nil {
 		return nil, err
 	}
