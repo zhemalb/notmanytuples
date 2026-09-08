@@ -236,11 +236,11 @@ func (db *DataBase) FindPipelineByID(id int) (*models.Pipeline, error) {
 	return &pipeline, nil
 }
 
-func (db *DataBase) BanSubmission(pipelineID int, reason string) error {
-	ban := &models.SubmissionBan{PipelineID: pipelineID, Reason: reason}
+func (db *DataBase) BanSubmission(pipelineID int, reason, adminLogin string) error {
+	ban := &models.SubmissionBan{PipelineID: pipelineID, Reason: reason, AdminLogin: adminLogin}
 	return db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "pipeline_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"reason", "created_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"reason", "admin_login", "created_at"}),
 	}).Create(ban).Error
 }
 

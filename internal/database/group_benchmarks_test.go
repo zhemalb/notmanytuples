@@ -62,7 +62,7 @@ func TestListGroupBenchmarksPostgres(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := db.BanSubmission(1, "cheating"); err != nil {
+	if err := db.BanSubmission(1, "cheating", ""); err != nil {
 		t.Fatal(err)
 	}
 

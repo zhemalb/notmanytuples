@@ -89,6 +89,7 @@ type Links struct {
 	Submits         string
 	Logout          string
 	SubmitFlag      string
+	Admin           string
 }
 
 func (s *server) makeLinks(user *models.User) *Links {
@@ -98,6 +99,9 @@ func (s *server) makeLinks(user *models.User) *Links {
 		TasksRepository: s.config.GitLab.TaskUrlPrefix,
 		Logout:          s.config.Endpoints.Logout,
 		SubmitFlag:      s.config.Endpoints.Flag,
+	}
+	if s.isAdmin(user) {
+		links.Admin = "/admin/submissions"
 	}
 	// No repository yet (still being created): no links into nowhere
 	if user != nil && user.Repository != nil {
