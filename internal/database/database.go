@@ -273,7 +273,8 @@ func (db *DataBase) AddBenchmarkResult(result *models.BenchmarkResult) error {
 }
 
 // GroupBenchmark is a benchmark result of a student from the requested
-// group whose pipeline succeeded on the branch of the reported task.
+// group whose pipeline succeeded on the branch of the reported task and is
+// not banned.
 type GroupBenchmark struct {
 	GitlabLogin string
 	FirstName   string
@@ -290,7 +291,8 @@ func (db *DataBase) ListGroupBenchmarks(group string) (results []GroupBenchmark,
 		Select("b.gitlab_login, u.first_name, u.last_name, b.task, b.pipeline_id, b.metric, p.started_at AS submitted_at").
 		Joins("JOIN pipelines AS p ON p.id = b.pipeline_id AND p.task = b.task AND p.status = ?", models.PipelineStatusSuccess).
 		Joins("JOIN users AS u ON u.gitlab_login = b.gitlab_login AND u.deleted_at IS NULL").
-		Where("u.group_name = ? AND u.repository IS NOT NULL", group).
+		Joins("LEFT JOIN submission_bans AS sb ON sb.pipeline_id = p.id").
+		Where("u.group_name = ? AND u.repository IS NOT NULL AND sb.pipeline_id IS NULL", group).
 		Scan(&results).Error
 	if err != nil {
 		results = nil
