@@ -43,6 +43,7 @@ func TestAdminSubmissionsTemplateRendersBannedLeaderboardRow(t *testing.T) {
 			Leaderboard: true, HasMetric: true, Metric: 1.25, Banned: true, BanReason: "invalid benchmark", BannedAt: time.Now(),
 		}, {
 			PipelineID: 43, PipelineURL: "https://gitlab.example/pipelines/43", Task: "bench", Status: "success", Leaderboard: true,
+			GitlabLogin: "bob", Overridden: true, OverrideScore: 17, OverrideStatus: "success",
 		}},
 		"CSRFToken": "csrf",
 		"Pagination": adminSubmissionPagination{
@@ -55,10 +56,14 @@ func TestAdminSubmissionsTemplateRendersBannedLeaderboardRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := output.String()
-	for _, expected := range []string{"table-danger", "invalid benchmark", "1.2500", "/admin/submissions/42/unban", "Page 2 of 3", "data-max-runes=\"500\""} {
+	for _, expected := range []string{"table-danger", "invalid benchmark", "1.2500", "/admin/submissions/42/unban", "Page 2 of 3", "data-max-runes=\"500\"", "Custom score 17", `action="/admin/submissions/43/score"`, "/admin/submissions/43/score/clear"} {
 		if !strings.Contains(html, expected) {
 			t.Errorf("rendered admin page does not contain %q", expected)
 		}
+	}
+	// Pipeline 42 has no known owner: nothing to attach a custom score to.
+	if strings.Contains(html, "/admin/submissions/42/score") {
+		t.Error("score form rendered for a pipeline without an owner")
 	}
 }
 

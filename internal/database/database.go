@@ -106,6 +106,19 @@ func (db *DataBase) FindUserByGitlabID(id int) (*models.User, error) {
 	return &user, nil
 }
 
+// FindUserByProjectName resolves the owner of a pipeline's project.
+func (db *DataBase) FindUserByProjectName(project string) (*models.User, error) {
+	if project == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	var user models.User
+	err := db.First(&user, projectNameSQL("repository")+" = ? AND repository IS NOT NULL", project).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
 func (db *DataBase) FindUserByTelegramID(id int64) (*models.User, error) {
 	var user models.User
 	err := db.First(&user, "telegram_id = ?", id).Error
@@ -463,14 +476,17 @@ func (db *DataBase) AddOverride(gitlabLogin, task string, score int, status mode
 		Status:      status,
 	}
 	return db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "gitlab_login"}, {Name: "task"}},
-		DoUpdates: clause.AssignmentColumns([]string{"score", "status"}),
+		Columns: []clause.Column{{Name: "gitlab_login"}, {Name: "task"}},
+		// deleted_at: RemoveOverride soft-deletes, setting the override again
+		// must bring the row back.
+		DoUpdates: clause.AssignmentColumns([]string{"score", "status", "deleted_at"}),
 	}).Create(overridenScore).Error
 }
 
 func (db *DataBase) RemoveOverride(gitlabLogin, task string) error {
+	// A soft delete needs a pointer: gorm rejects a struct value here.
 	return db.
 		Where("gitlab_login = ? AND task = ?", gitlabLogin, task).
-		Delete(models.OverriddenScore{}).
+		Delete(&models.OverriddenScore{}).
 		Error
 }

@@ -117,6 +117,8 @@ func (s *server) run() error {
 	r.GET("/admin/submissions", s.validateSession(true), s.validateAdmin, s.RenderAdminSubmissionsPage)
 	r.POST("/admin/submissions/:pipeline/ban", s.validateSession(true), s.validateAdmin, s.handleAdminBanSubmission)
 	r.POST("/admin/submissions/:pipeline/unban", s.validateSession(true), s.validateAdmin, s.handleAdminUnbanSubmission)
+	r.POST("/admin/submissions/:pipeline/score", s.validateSession(true), s.validateAdmin, s.handleAdminSetScore)
+	r.POST("/admin/submissions/:pipeline/score/clear", s.validateSession(true), s.validateAdmin, s.handleAdminClearScore)
 	r.GET("/private/solutions/:group/:task", s.handleChuckNorris)
 
 	r.StaticFS("/static", http.FS(web.StaticContent))

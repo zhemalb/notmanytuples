@@ -11,10 +11,13 @@ import (
 	"unicode/utf8"
 
 	"github.com/bigredeye/notmanytask/internal/database"
+	lf "github.com/bigredeye/notmanytask/internal/logfield"
+	"github.com/bigredeye/notmanytask/internal/models"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 const (
@@ -39,6 +42,10 @@ type adminSubmissionRow struct {
 	BanReason    string
 	BannedAt     time.Time
 	BannedByName string
+	// Overridden: the student's task has a custom score, see handleAdminSetScore.
+	Overridden     bool
+	OverrideScore  int
+	OverrideStatus string
 }
 
 type adminSubmissionFilters struct {
@@ -154,19 +161,22 @@ func (s *server) RenderAdminSubmissionsPage(c *gin.Context) {
 	rows := make([]adminSubmissionRow, 0, len(page.Items))
 	for _, submission := range page.Items {
 		row := adminSubmissionRow{
-			PipelineID:   submission.PipelineID,
-			PipelineURL:  s.gitlab.MakeProjectPipelineURL(submission.Project, submission.PipelineID),
-			Project:      submission.Project,
-			Task:         submission.Task,
-			Status:       submission.Status,
-			StartedAt:    submission.StartedAt,
-			Name:         strings.TrimSpace(submission.FirstName + " " + submission.LastName),
-			GitlabLogin:  submission.GitlabLogin,
-			Group:        submission.GroupName,
-			Leaderboard:  submission.Leaderboard,
-			Banned:       submission.Banned,
-			BanReason:    submission.BanReason,
-			BannedByName: submission.BannedByName,
+			PipelineID:     submission.PipelineID,
+			PipelineURL:    s.gitlab.MakeProjectPipelineURL(submission.Project, submission.PipelineID),
+			Project:        submission.Project,
+			Task:           submission.Task,
+			Status:         submission.Status,
+			StartedAt:      submission.StartedAt,
+			Name:           strings.TrimSpace(submission.FirstName + " " + submission.LastName),
+			GitlabLogin:    submission.GitlabLogin,
+			Group:          submission.GroupName,
+			Leaderboard:    submission.Leaderboard,
+			Banned:         submission.Banned,
+			BanReason:      submission.BanReason,
+			BannedByName:   submission.BannedByName,
+			Overridden:     submission.Overridden,
+			OverrideScore:  submission.OverrideScore,
+			OverrideStatus: submission.OverrideStatus,
 		}
 		if submission.Metric != nil {
 			row.Metric = *submission.Metric
@@ -269,6 +279,78 @@ func (s *server) handleAdminUnbanSubmission(c *gin.Context) {
 	}
 	s.cache.Clear()
 	s.logger.Info("Submission unbanned", zap.Int("pipeline_id", pipelineID), zap.String("admin", *s.getUser(c).GitlabLogin))
+	c.Redirect(http.StatusSeeOther, "/admin/submissions")
+}
+
+// submissionOwner resolves a pipeline to the student login and task a
+// custom score applies to. A merge request pipeline stored before its
+// request was synced still carries the refs/merge-requests/<iid> ref: the
+// task comes from the request, or the pipeline is not usable yet.
+func (s *server) submissionOwner(pipelineID int) (login, task string, err error) {
+	pipeline, err := s.db.FindPipelineByID(pipelineID)
+	if err != nil {
+		return "", "", err
+	}
+	task = pipeline.Task
+	if resolved, isMergeRequest := s.db.MergeRequestPipelineTask(pipeline.Project, pipeline.Task); isMergeRequest {
+		if resolved == "" {
+			return "", "", gorm.ErrRecordNotFound
+		}
+		task = resolved
+	}
+	user, err := s.db.FindUserByProjectName(pipeline.Project)
+	if err != nil {
+		return "", "", err
+	}
+	if user.GitlabLogin == nil {
+		return "", "", gorm.ErrRecordNotFound
+	}
+	return *user.GitlabLogin, task, nil
+}
+
+// handleAdminSetScore stores a custom score for the student's task through
+// the same override the /api/override endpoint uses: the task then counts as
+// successful with exactly that score, whatever its pipelines say.
+func (s *server) handleAdminSetScore(c *gin.Context) {
+	pipelineID, ok := s.adminPipelineID(c)
+	if !ok {
+		return
+	}
+	score, err := strconv.Atoi(strings.TrimSpace(c.PostForm("score")))
+	if err != nil || score < 0 {
+		c.String(http.StatusBadRequest, "score must be a non-negative integer")
+		return
+	}
+	login, task, err := s.submissionOwner(pipelineID)
+	if err != nil {
+		c.String(http.StatusNotFound, "pipeline owner not found")
+		return
+	}
+	if err := s.db.AddOverride(login, task, score, models.PipelineStatusSuccess); err != nil {
+		c.String(http.StatusInternalServerError, "failed to set score")
+		return
+	}
+	s.cache.Clear()
+	s.logger.Info("Custom score set", zap.Int("pipeline_id", pipelineID), lf.GitlabLogin(login), zap.String("task", task), zap.Int("score", score), zap.Uint("admin_user_id", s.getUser(c).ID))
+	c.Redirect(http.StatusSeeOther, "/admin/submissions")
+}
+
+func (s *server) handleAdminClearScore(c *gin.Context) {
+	pipelineID, ok := s.adminPipelineID(c)
+	if !ok {
+		return
+	}
+	login, task, err := s.submissionOwner(pipelineID)
+	if err != nil {
+		c.String(http.StatusNotFound, "pipeline owner not found")
+		return
+	}
+	if err := s.db.RemoveOverride(login, task); err != nil {
+		c.String(http.StatusInternalServerError, "failed to clear score")
+		return
+	}
+	s.cache.Clear()
+	s.logger.Info("Custom score cleared", zap.Int("pipeline_id", pipelineID), lf.GitlabLogin(login), zap.String("task", task), zap.Uint("admin_user_id", s.getUser(c).ID))
 	c.Redirect(http.StatusSeeOther, "/admin/submissions")
 }
 

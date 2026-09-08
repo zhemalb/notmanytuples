@@ -54,7 +54,7 @@ func TestListAdminSubmissionsPostgres(t *testing.T) {
 	if err := tx.Exec("SET LOCAL search_path TO " + schema).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := tx.AutoMigrate(&models.User{}, &models.Pipeline{}, &models.BenchmarkResult{}, &models.SubmissionBan{}); err != nil {
+	if err := tx.AutoMigrate(&models.User{}, &models.Pipeline{}, &models.BenchmarkResult{}, &models.SubmissionBan{}, &models.OverriddenScore{}); err != nil {
 		t.Fatal(err)
 	}
 	db := &DataBase{DB: tx}
@@ -92,6 +92,9 @@ func TestListAdminSubmissionsPostgres(t *testing.T) {
 	if err := tx.Create(&models.SubmissionBan{PipelineID: 1, AdminLogin: teacherLogin, Reason: "invalid environment", CreatedAt: now}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := db.AddOverride(aliceLogin, "bench", 17, models.PipelineStatusSuccess); err != nil {
+		t.Fatal(err)
+	}
 
 	t.Run("database filters", func(t *testing.T) {
 		page, err := db.ListAdminSubmissions(AdminSubmissionFilters{
@@ -107,6 +110,12 @@ func TestListAdminSubmissionsPostgres(t *testing.T) {
 		if item.Metric == nil || *item.Metric != 1.20 || !item.Leaderboard || !item.Banned || item.BannedByName != "Тест Учитель" {
 			t.Fatalf("joined submission data is incomplete: %+v", item)
 		}
+		if !item.Overridden || item.OverrideScore != 17 || item.OverrideStatus != models.PipelineStatusSuccess {
+			t.Fatalf("custom score is not joined: %+v", item)
+		}
+		if owner, err := db.FindUserByProjectName(item.Project); err != nil || owner.ID != users[0].ID {
+			t.Fatalf("pipeline owner = %+v, %v; want alice", owner, err)
+		}
 
 		literalWildcard, err := db.ListAdminSubmissions(AdminSubmissionFilters{Search: "%", PageSize: 10})
 		if err != nil {
@@ -114,6 +123,22 @@ func TestListAdminSubmissionsPostgres(t *testing.T) {
 		}
 		if literalWildcard.Total != 0 {
 			t.Fatalf("LIKE wildcard was not escaped: got %d matches", literalWildcard.Total)
+		}
+	})
+
+	t.Run("custom score can be cleared and set again", func(t *testing.T) {
+		if err := db.RemoveOverride(aliceLogin, "bench"); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.AddOverride(aliceLogin, "bench", 18, models.PipelineStatusSuccess); err != nil {
+			t.Fatal(err)
+		}
+		overrides, err := db.ListUserOverrides(aliceLogin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(overrides) != 1 || overrides[0].Score != 18 {
+			t.Fatalf("override was not restored: %+v", overrides)
 		}
 	})
 
