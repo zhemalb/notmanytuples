@@ -124,7 +124,7 @@ func TestLeaderboardBonusOnlyByDeadline(t *testing.T) {
 			func(string) ([]models.MergeRequest, error) {
 				return []models.MergeRequest{merged(1, pipelineAt, testRobot)}, nil
 			},
-			nil, boards,
+			nil, boards, nil,
 		)
 		if err != nil {
 			t.Fatal(err)

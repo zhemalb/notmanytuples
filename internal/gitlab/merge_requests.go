@@ -159,6 +159,7 @@ func (p *MergeRequestsFetcher) syncMergeRequest(log *zap.Logger, project *gitlab
 		MergeUserLogin:        mergeUserLogin,
 		HasUnresolvedNotes:    notes.HasUnresolvedNotes,
 		LastNoteCreatedAt:     notes.LastNoteCreatedAt,
+		LastPipelineID:        pipeline.ID,
 		LastPipelineStatus:    pipeline.Status,
 		LastPipelineCreatedAt: pipeline.CreatedAt,
 		ExtraChanges:          extraChanges,
