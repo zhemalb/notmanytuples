@@ -145,6 +145,13 @@ func (s *server) RenderAdminSubmissionsPage(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "failed to list submission filters")
 		return
 	}
+	cachedStatistics, err := s.cache.Fetch("admin/statistics", time.Second*10, func() (interface{}, error) {
+		return s.db.GetAdminStatistics()
+	})
+	if err != nil {
+		c.String(http.StatusInternalServerError, "failed to load admin statistics")
+		return
+	}
 	csrfToken, err := s.adminCSRFToken(c)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "failed to prepare form")
@@ -207,6 +214,7 @@ func (s *server) RenderAdminSubmissionsPage(c *gin.Context) {
 		"Filters":    filters,
 		"Groups":     options.Groups,
 		"Tasks":      options.Tasks,
+		"Statistics": cachedStatistics.Value().(*database.AdminStatistics),
 		"CSRFToken":  csrfToken,
 		"Pagination": pagination,
 		"AllURL":     adminSubmissionsURL(allFilters, 1),
