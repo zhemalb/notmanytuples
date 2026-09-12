@@ -458,7 +458,7 @@ func (s apiService) moderate(c *gin.Context, ban bool) {
 	}
 
 	if ban {
-		if err := s.server.db.BanSubmission(req.PipelineID, req.Reason); err != nil {
+		if err := s.server.db.BanSubmission(req.PipelineID, req.Reason, ""); err != nil {
 			onError(http.StatusInternalServerError, err)
 			return
 		}
