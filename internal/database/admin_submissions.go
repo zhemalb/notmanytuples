@@ -39,6 +39,10 @@ type AdminSubmission struct {
 	BanReason    string
 	BannedAt     *time.Time
 	BannedByName string
+	// Overridden: the student's task has a custom score set by a teacher.
+	Overridden     bool
+	OverrideScore  int
+	OverrideStatus string
 }
 
 type AdminSubmissionsPage struct {
@@ -82,7 +86,8 @@ func (db *DataBase) adminSubmissionsQuery(filters AdminSubmissionFilters) *gorm.
 		Joins("LEFT JOIN users AS u ON u.deleted_at IS NULL AND " + projectNameSQL("u.repository") + " = p.project").
 		Joins("LEFT JOIN benchmark_results AS br ON br.pipeline_id = p.id").
 		Joins("LEFT JOIN submission_bans AS sb ON sb.pipeline_id = p.id").
-		Joins("LEFT JOIN users AS au ON au.gitlab_login = sb.admin_login AND au.deleted_at IS NULL")
+		Joins("LEFT JOIN users AS au ON au.gitlab_login = sb.admin_login AND au.deleted_at IS NULL").
+		Joins("LEFT JOIN overridden_scores AS os ON os.gitlab_login = u.gitlab_login AND os.task = p.task AND os.deleted_at IS NULL")
 
 	switch filters.Kind {
 	case "regular":
@@ -144,7 +149,10 @@ func (db *DataBase) ListAdminSubmissions(filters AdminSubmissionFilters) (*Admin
             (sb.pipeline_id IS NOT NULL) AS banned,
             COALESCE(sb.reason, '') AS ban_reason,
             sb.created_at AS banned_at,
-            CONCAT_WS(' ', au.first_name, au.last_name) AS banned_by_name
+            CONCAT_WS(' ', au.first_name, au.last_name) AS banned_by_name,
+            (os.id IS NOT NULL) AS overridden,
+            COALESCE(os.score, 0) AS override_score,
+            COALESCE(os.status, '') AS override_status
         `).
 		Order("p.started_at DESC, p.id DESC").
 		Limit(pageSize).
