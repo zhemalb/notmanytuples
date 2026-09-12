@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bigredeye/notmanytask/internal/config"
+	"github.com/bigredeye/notmanytask/internal/database"
 	"github.com/bigredeye/notmanytask/internal/models"
 )
 
@@ -46,6 +47,12 @@ func TestAdminSubmissionsTemplateRendersBannedLeaderboardRow(t *testing.T) {
 			GitlabLogin: "bob", Overridden: true, OverrideScore: 17, OverrideStatus: "success",
 		}},
 		"CSRFToken": "csrf",
+		"Statistics": &database.AdminStatistics{
+			Summary:         database.AdminStatisticsSummary{ActiveBans: 2, RepeatOffenders: 1, AffectedTasks: 2},
+			RepeatOffenders: []database.AdminRepeatOffender{{GitlabLogin: "alice", Name: "Alice Student", BannedPipelines: 2}},
+			ModeratedTasks:  []database.AdminModeratedTask{{Task: "bench", BannedPipelines: 2, LastBannedAt: time.Now()}},
+			BenchmarkTrends: []database.AdminBenchmarkTrend{{Task: "bench", ReportsLast7: 3, ReportsPrevious7: 2, AverageLast7: 1.0, AveragePrevious7: 1.2, ChangePercent: -16.7, Improved: true}},
+		},
 		"Pagination": adminSubmissionPagination{
 			Page: 2, TotalPages: 3, Total: 125, HasPrevious: true, PreviousURL: "/admin/submissions?page=1", HasNext: true, NextURL: "/admin/submissions?page=3",
 		},
@@ -56,7 +63,11 @@ func TestAdminSubmissionsTemplateRendersBannedLeaderboardRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := output.String()
-	for _, expected := range []string{"table-danger", "invalid benchmark", "1.2500", "/admin/submissions/42/unban", "Page 2 of 3", "data-max-runes=\"500\"", "Custom score 17", `action="/admin/submissions/43/score"`, "/admin/submissions/43/score/clear"} {
+	for _, expected := range []string{
+		"table-danger", "invalid benchmark", "1.2500", "/admin/submissions/42/unban", "Page 2 of 3", "data-max-runes=\"500\"",
+		"Custom score 17", `action="/admin/submissions/43/score"`, "/admin/submissions/43/score/clear",
+		"Moderation insights", "Repeated violations", "Alice Student", "Most moderated tasks", "Benchmark trend", "-16.7%",
+	} {
 		if !strings.Contains(html, expected) {
 			t.Errorf("rendered admin page does not contain %q", expected)
 		}

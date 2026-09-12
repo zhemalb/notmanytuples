@@ -168,4 +168,30 @@ func TestListAdminSubmissionsPostgres(t *testing.T) {
 			t.Fatalf("unexpected filter options: %+v", options)
 		}
 	})
+
+	t.Run("admin statistics", func(t *testing.T) {
+		if err := db.BanSubmission(2, "repeat violation", teacherLogin); err != nil {
+			t.Fatal(err)
+		}
+		statistics, err := db.GetAdminStatistics()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if statistics.Summary != (AdminStatisticsSummary{ActiveBans: 2, RepeatOffenders: 1, AffectedTasks: 2}) {
+			t.Fatalf("unexpected summary: %+v", statistics.Summary)
+		}
+		offenders := statistics.RepeatOffenders
+		if len(offenders) != 1 || offenders[0].GitlabLogin != aliceLogin || offenders[0].Name != "Алиса Студент" || offenders[0].BannedPipelines != 2 {
+			t.Fatalf("unexpected repeat offenders: %+v", offenders)
+		}
+		tasks := statistics.ModeratedTasks
+		if len(tasks) != 2 || tasks[0].Task != "bench" || tasks[1].Task != "regular" ||
+			tasks[0].BannedPipelines != 1 || tasks[1].BannedPipelines != 1 || tasks[0].LastBannedAt.IsZero() || tasks[1].LastBannedAt.IsZero() {
+			t.Fatalf("unexpected moderated tasks: %+v", tasks)
+		}
+		trends := statistics.BenchmarkTrends
+		if len(trends) != 1 || trends[0].Task != "bench" || trends[0].ReportsLast7 != 2 {
+			t.Fatalf("unexpected benchmark trends: %+v", trends)
+		}
+	})
 }
